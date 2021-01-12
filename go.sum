@@ -477,6 +477,8 @@ github.com/kanisterio/kanister v0.0.0-20210107104917-87c23601f91b h1:uGCqexHsiCx
 github.com/kanisterio/kanister v0.0.0-20210107104917-87c23601f91b/go.mod h1:PAprswl9Kmod22n6LoDxWKN/BNLnr7nONinOWg4zlAk=
 github.com/kanisterio/kanister v0.0.0-20210112111543-605d576a4ec6 h1:+5bl1qhnrMyiduc4WYtfoM98zaLIJ7kEfvn/YTRd9yE=
 github.com/kanisterio/kanister v0.0.0-20210112111543-605d576a4ec6/go.mod h1:PAprswl9Kmod22n6LoDxWKN/BNLnr7nONinOWg4zlAk=
+github.com/kanisterio/kanister v0.0.0-20210112112520-c68436e3473c h1:ygbXTwRsPFl2kU7cPrSKABX9Z+dZzkwL0nIsGk0zzJg=
+github.com/kanisterio/kanister v0.0.0-20210112112520-c68436e3473c/go.mod h1:PAprswl9Kmod22n6LoDxWKN/BNLnr7nONinOWg4zlAk=
 github.com/kastenhq/stow v0.1.2-kasten/go.mod h1:ABI2whmZOX25JbmbVuHRLFuPiGnv5lxXhduCtof7UHk=
 github.com/kelseyhightower/envconfig v1.4.0 h1:Im6hONhd3pLkfDFsbRgu68RDNkGF1r3dvMUtDTo2cv8=
 github.com/kelseyhightower/envconfig v1.4.0/go.mod h1:cccZRl6mQpaq41TPp5QxidR+Sa3axMbJDNb//FQX6Gg=

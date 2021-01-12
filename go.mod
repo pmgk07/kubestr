@@ -13,7 +13,7 @@ require (
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/jarcoal/httpmock v1.0.5 // indirect
 	github.com/jpillora/backoff v0.0.0-20180909062703-3050d21c67d7 // indirect
-	github.com/kanisterio/kanister v0.0.0-20210112111543-605d576a4ec6
+	github.com/kanisterio/kanister v0.0.0-20210112112520-c68436e3473c
 	github.com/kr/text v0.2.0 // indirect
 	github.com/kubernetes-csi/external-snapshotter/client/v4 v4.0.0
 	github.com/mitchellh/mapstructure v1.3.1 // indirect

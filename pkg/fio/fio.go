@@ -332,7 +332,7 @@ func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, 
 
 	err = json.Unmarshal([]byte(stdout), &fioOut)
 	if err != nil {
-		return fioOut, errors.Wrapf(err, "Unable to parse fio output into json.")
+		return fioOut, errors.Wrapf(err, "Unable to parse fio output into json. (%s)", stdout)
 	}
 
 	return fioOut, nil

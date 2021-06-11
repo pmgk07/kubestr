@@ -312,7 +312,10 @@ func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, 
 	timestart := time.Now()
 	go func() {
 		stdout, stderr, err = s.kubeExecutor.exec(namespace, podName, containerName, command)
-		fmt.Println("stdout- ", stdout, "\nstderr- ", stderr, "\nerr- ", err.Error())
+		fmt.Println("stdout- ", stdout, "\nstderr- ", stderr)
+		if err != nil {
+			fmt.Println("err- ", err.Error())
+		}
 		if err != nil || stderr != "" {
 			if err == nil {
 				err = fmt.Errorf("stderr when running FIO")

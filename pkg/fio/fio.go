@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/briandowns/spinner"
 	kankube "github.com/kanisterio/kanister/pkg/kube"
 	"github.com/kastenhq/kubestr/pkg/common"
 	"github.com/pkg/errors"
@@ -305,30 +304,24 @@ func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, 
 	jobFilePath := fmt.Sprintf("%s/%s", ConfigMapMountPath, testFileName)
 	command := []string{"fio", "--directory", VolumeMountPath, jobFilePath, "--output-format=json"}
 	fmt.Println("command- ", command)
-	done := make(chan bool, 1)
 	var fioOut FioResult
 	var stdout string
 	var stderr string
 	var err error
 	timestart := time.Now()
-	go func() {
-		stdout, stderr, err = s.kubeExecutor.exec(namespace, podName, containerName, command)
-		fmt.Println("stdout- ", stdout, "\nstderr- ", stderr)
-		if err != nil {
-			fmt.Println("err- ", err.Error())
+
+	stdout, stderr, err = s.kubeExecutor.exec(namespace, podName, containerName, command)
+	fmt.Println("stdout- ", stdout, "\nstderr- ", stderr)
+	if err != nil {
+		fmt.Println("err- ", err.Error())
+	}
+	if err != nil || stderr != "" {
+		if err == nil {
+			err = fmt.Errorf("stderr when running FIO")
 		}
-		if err != nil || stderr != "" {
-			if err == nil {
-				err = fmt.Errorf("stderr when running FIO")
-			}
-			err = errors.Wrapf(err, "Error running command:(%v), stderr:(%s)", command, stderr)
-		}
-		done <- true
-	}()
-	spin := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
-	spin.Start()
-	<-done
-	spin.Stop()
+		err = errors.Wrapf(err, "Error running command:(%v), stderr:(%s)", command, stderr)
+	}
+
 	elapsed := time.Since(timestart)
 	fmt.Println("Elapsed time-", elapsed)
 	if err != nil {

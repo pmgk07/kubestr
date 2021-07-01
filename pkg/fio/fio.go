@@ -304,6 +304,7 @@ func (s *fioStepper) deletePod(ctx context.Context, podName, namespace string) e
 func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, testFileName, namespace string) (FioResult, error) {
 	jobFilePath := fmt.Sprintf("%s/%s", ConfigMapMountPath, testFileName)
 	command := []string{"fio", "--directory", VolumeMountPath, jobFilePath, "--output-format=json"}
+	fmt.Println("command- ", command)
 	done := make(chan bool, 1)
 	var fioOut FioResult
 	var stdout string

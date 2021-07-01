@@ -310,8 +310,8 @@ func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, 
 	var err error
 	timestart := time.Now()
 
-	//command = []string{"fio", "--directory", "/dataset", "/etc/fio-config/default-fio", "--output-format=json"}
-	command = []string{"ls", "/dataset"}
+	command = []string{"fio", "--directory", "/dataset", "/etc/fio-config/default-fio"}
+	//command = []string{"ls", "/dataset"}
 	fmt.Println("Running kubeExecutor with command - ", command)
 	stdout, stderr, err = s.kubeExecutor.exec(namespace, podName, containerName, command)
 	fmt.Println("stdout- ", stdout, "\nstderr- ", stderr)

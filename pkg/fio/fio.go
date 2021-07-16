@@ -247,8 +247,38 @@ func (s *fioStepper) createPod(ctx context.Context, pvcName, configMapName, test
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: PodGenerateName,
 			Namespace:    namespace,
+			Labels: map[string]string{
+				"app": "kubestr",
+			},
 		},
 		Spec: v1.PodSpec{
+			Affinity: &v1.Affinity{
+				PodAntiAffinity: &v1.PodAntiAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
+						TopologyKey: "kubernetes.io/hostname",
+						LabelSelector: &metav1.LabelSelector{
+							MatchExpressions: []metav1.LabelSelectorRequirement{{
+								Key:      "app",
+								Operator: metav1.LabelSelectorOpIn,
+								Values:   []string{"kubestr"},
+							}},
+						},
+					}},
+					// PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
+					// 	Weight: 100,
+					// 	PodAffinityTerm: v1.PodAffinityTerm{
+					// 		TopologyKey: "kubernetes.io/hostname",
+					// 		LabelSelector: &metav1.LabelSelector{
+					// 			MatchExpressions: []metav1.LabelSelectorRequirement{{
+					// 				Key:      "app",
+					// 				Operator: metav1.LabelSelectorOpIn,
+					// 				Values:   []string{"kubestr"},
+					// 			}},
+					// 		},
+					// 	},
+					// }},
+				},
+			},
 			Containers: []v1.Container{{
 				Name:    ContainerName,
 				Command: []string{"/bin/sh"},

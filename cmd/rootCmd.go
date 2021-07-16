@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/kastenhq/kubestr/pkg/csi"
@@ -28,8 +29,9 @@ import (
 )
 
 var (
-	output  string
-	rootCmd = &cobra.Command{
+	output     string
+	outputFile string
+	rootCmd    = &cobra.Command{
 		Use:   "kubestr",
 		Short: "A tool to validate kubernetes storage",
 		Long: `kubestr is a tool that will scan your k8s cluster
@@ -46,10 +48,11 @@ var (
 	namespace      string
 	containerImage string
 
-	fioCheckerSize     string
-	fioCheckerFilePath string
-	fioCheckerTestName string
-	fioCmd             = &cobra.Command{
+	fioCheckerSize         string
+	fioCheckerPrepFilePath string
+	fioCheckerFilePath     string
+	fioCheckerTestName     string
+	fioCmd                 = &cobra.Command{
 		Use:   "fio",
 		Short: "Runs an fio test",
 		Long:  `Run an fio test`,
@@ -78,12 +81,14 @@ var (
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&output, "output", "o", "", "Options(json)")
+	rootCmd.PersistentFlags().StringVar(&outputFile, "outputfile", "", "Output file, only applicable if json output is chosen")
 
 	rootCmd.AddCommand(fioCmd)
 	fioCmd.Flags().StringVarP(&storageClass, "storageclass", "s", "", "The name of a Storageclass. (Required)")
 	_ = fioCmd.MarkFlagRequired("storageclass")
 	fioCmd.Flags().StringVarP(&fioCheckerSize, "size", "z", fio.DefaultPVCSize, "The size of the volume used to run FIO.")
 	fioCmd.Flags().StringVarP(&namespace, "namespace", "n", fio.DefaultNS, "The namespace used to run FIO.")
+	fioCmd.Flags().StringVarP(&fioCheckerPrepFilePath, "fioprepfile", "f", "", "The path to a an fio config file to be used to prep the PVså (typically used for read tests).")
 	fioCmd.Flags().StringVarP(&fioCheckerFilePath, "fiofile", "f", "", "The path to a an fio config file.")
 	fioCmd.Flags().StringVarP(&fioCheckerTestName, "testname", "t", "", "The Name of a predefined kubestr fio test. Options(default-fio)")
 	fioCmd.Flags().StringVarP(&containerImage, "image", "i", "", "The container image used to create a pod.")
@@ -172,6 +177,11 @@ func Fio(ctx context.Context, output, storageclass, size, namespace, jobName, fi
 
 	if output == "json" {
 		jsonRes, _ := json.MarshalIndent(result, "", "    ")
+		if outputFile != "" {
+			if err := ioutil.WriteFile(outputFile, jsonRes, 0777); err != nil {
+				fmt.Println("E!", err)
+			}
+		}
 		fmt.Println(string(jsonRes))
 		return
 	}

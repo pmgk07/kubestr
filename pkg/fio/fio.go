@@ -61,6 +61,7 @@ type FIOrunner struct {
 
 type RunFIOArgs struct {
 	StorageClass   string
+	VolumeMode     string
 	Size           string
 	Namespace      string
 	FIOJobFilepath string
@@ -124,7 +125,7 @@ func (f *FIOrunner) RunFioHelper(ctx context.Context, args *RunFIOArgs) (*RunFIO
 		return nil, errors.Wrap(err, "Failed to get test file name.")
 	}
 
-	pvc, err := f.fioSteps.createPVC(ctx, args.StorageClass, args.Size, args.Namespace)
+	pvc, err := f.fioSteps.createPVC(ctx, args.StorageClass, args.VolumeMode, args.Size, args.Namespace)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create PVC")
 	}
@@ -133,7 +134,7 @@ func (f *FIOrunner) RunFioHelper(ctx context.Context, args *RunFIOArgs) (*RunFIO
 	}()
 	fmt.Println("PVC created", pvc.Name)
 
-	pod, err := f.fioSteps.createPod(ctx, pvc.Name, configMap.Name, testFileName, args.Namespace, args.Image)
+	pod, err := f.fioSteps.createPod(ctx, pvc.Name, args.VolumeMode, configMap.Name, testFileName, args.Namespace, args.Image)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed to create POD")
 	}
@@ -142,7 +143,7 @@ func (f *FIOrunner) RunFioHelper(ctx context.Context, args *RunFIOArgs) (*RunFIO
 	}()
 	fmt.Println("Pod created", pod.Name)
 	fmt.Printf("Running FIO test (%s) on StorageClass (%s) with a PVC of Size (%s)\n", testFileName, args.StorageClass, args.Size)
-	fioOutput, err := f.fioSteps.runFIOCommand(ctx, pod.Name, ContainerName, testFileName, args.Namespace)
+	fioOutput, err := f.fioSteps.runFIOCommand(ctx, args.VolumeMode, pod.Name, ContainerName, testFileName, args.Namespace)
 	if err != nil {
 		return nil, errors.Wrap(err, "Failed while running FIO test.")
 	}
@@ -158,11 +159,11 @@ type fioSteps interface {
 	validateNamespace(ctx context.Context, namespace string) error
 	storageClassExists(ctx context.Context, storageClass string) (*sv1.StorageClass, error)
 	loadConfigMap(ctx context.Context, args *RunFIOArgs) (*v1.ConfigMap, error)
-	createPVC(ctx context.Context, storageclass, size, namespace string) (*v1.PersistentVolumeClaim, error)
+	createPVC(ctx context.Context, storageclass, volumeMode, size, namespace string) (*v1.PersistentVolumeClaim, error)
 	deletePVC(ctx context.Context, pvcName, namespace string) error
-	createPod(ctx context.Context, pvcName, configMapName, testFileName, namespace string, image string) (*v1.Pod, error)
+	createPod(ctx context.Context, pvcName, volumeMode, configMapName, testFileName, namespace string, image string) (*v1.Pod, error)
 	deletePod(ctx context.Context, podName, namespace string) error
-	runFIOCommand(ctx context.Context, podName, containerName, testFileName, namespace string) (FioResult, error)
+	runFIOCommand(ctx context.Context, volumeMode, podName, containerName, testFileName, namespace string) (FioResult, error)
 	deleteConfigMap(ctx context.Context, configMap *v1.ConfigMap, namespace string) error
 }
 
@@ -208,17 +209,28 @@ func (s *fioStepper) loadConfigMap(ctx context.Context, args *RunFIOArgs) (*v1.C
 	return s.cli.CoreV1().ConfigMaps(args.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 }
 
-func (s *fioStepper) createPVC(ctx context.Context, storageclass, size, namespace string) (*v1.PersistentVolumeClaim, error) {
+func (s *fioStepper) createPVC(ctx context.Context, storageclass, volumeMode, size, namespace string) (*v1.PersistentVolumeClaim, error) {
 	sizeResource, err := resource.ParseQuantity(size)
 	if err != nil {
 		return nil, errors.Wrapf(err, "Unable to parse PVC size (%s)", size)
 	}
+	var pvcVolumeMode v1.PersistentVolumeMode
+	if volumeMode == string(v1.PersistentVolumeBlock) {
+		pvcVolumeMode = v1.PersistentVolumeBlock
+	} else if volumeMode == "" || volumeMode == string(v1.PersistentVolumeFilesystem) {
+		pvcVolumeMode = v1.PersistentVolumeFilesystem
+	} else {
+		errMsg := fmt.Sprintf("Invalid Volume Mode (%s) for PVC", volumeMode)
+		return nil, errors.New(errMsg)
+	}
+
 	pvc := &v1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: PVCGenerateName,
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
 			StorageClassName: &storageclass,
+			VolumeMode:       &pvcVolumeMode,
 			AccessModes:      []v1.PersistentVolumeAccessMode{v1.ReadWriteOnce},
 			Resources: v1.ResourceRequirements{
 				Requests: v1.ResourceList{
@@ -234,7 +246,7 @@ func (s *fioStepper) deletePVC(ctx context.Context, pvcName, namespace string) e
 	return s.cli.CoreV1().PersistentVolumeClaims(namespace).Delete(ctx, pvcName, metav1.DeleteOptions{})
 }
 
-func (s *fioStepper) createPod(ctx context.Context, pvcName, configMapName, testFileName, namespace string, image string) (*v1.Pod, error) {
+func (s *fioStepper) createPod(ctx context.Context, pvcName, volumeMode, configMapName, testFileName, namespace string, image string) (*v1.Pod, error) {
 	if pvcName == "" || configMapName == "" || testFileName == "" {
 		return nil, fmt.Errorf("Create pod missing required arguments.")
 	}
@@ -284,7 +296,6 @@ func (s *fioStepper) createPod(ctx context.Context, pvcName, configMapName, test
 				Command: []string{"/bin/sh"},
 				Args:    []string{"-c", "tail -f /dev/null"},
 				VolumeMounts: []v1.VolumeMount{
-					{Name: "persistent-storage", MountPath: VolumeMountPath},
 					{Name: "config-map", MountPath: ConfigMapMountPath},
 				},
 				Image: image,
@@ -309,6 +320,20 @@ func (s *fioStepper) createPod(ctx context.Context, pvcName, configMapName, test
 			},
 		},
 	}
+
+	// Assumes container-0 in the pod is the kubestr/fio container
+	if volumeMode == string(v1.PersistentVolumeBlock) {
+		pod.Spec.Containers[0].VolumeDevices = append(pod.Spec.Containers[0].VolumeDevices, v1.VolumeDevice{
+			Name: "persistent-storage", DevicePath: VolumeMountPath,
+		})
+	} else if volumeMode == "" || volumeMode == string(v1.PersistentVolumeFilesystem) {
+		pod.Spec.Containers[0].VolumeMounts = append(pod.Spec.Containers[0].VolumeMounts, v1.VolumeMount{
+			Name: "persistent-storage", MountPath: VolumeMountPath,
+		})
+	} else {
+		return nil, errors.Errorf("Invalid Volume Mode for Pod's PVClaim: %s", volumeMode)
+	}
+
 	podRes, err := s.cli.CoreV1().Pods(namespace).Create(ctx, pod, metav1.CreateOptions{})
 	if err != nil {
 		return podRes, err
@@ -331,9 +356,16 @@ func (s *fioStepper) deletePod(ctx context.Context, podName, namespace string) e
 	return s.cli.CoreV1().Pods(namespace).Delete(ctx, podName, metav1.DeleteOptions{})
 }
 
-func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, testFileName, namespace string) (FioResult, error) {
+func (s *fioStepper) runFIOCommand(ctx context.Context, volumeMode, podName, containerName, testFileName, namespace string) (FioResult, error) {
 	jobFilePath := fmt.Sprintf("%s/%s", ConfigMapMountPath, testFileName)
-	command := []string{"fio", "--directory", VolumeMountPath, jobFilePath, "--output-format=json"}
+	var command []string
+	if volumeMode == string(v1.PersistentVolumeBlock) {
+		command = []string{"fio", "--filename", VolumeMountPath, jobFilePath, "--output-format=json"}
+	} else if volumeMode == "" || volumeMode == string(v1.PersistentVolumeFilesystem) {
+		command = []string{"fio", "--directory", VolumeMountPath, jobFilePath, "--output-format=json"}
+	} else {
+		return FioResult{}, errors.Errorf("Invalid VolumeMode %s for fio", volumeMode)
+	}
 	done := make(chan bool, 1)
 	var fioOut FioResult
 	var stdout string
@@ -360,7 +392,17 @@ func (s *fioStepper) runFIOCommand(ctx context.Context, podName, containerName, 
 		return fioOut, err
 	}
 
-	err = json.Unmarshal([]byte(stdout), &fioOut)
+	// Handle Fio errors like ENOSPC when writing to block device
+	bytes_stdout := []byte(stdout)
+	for i := 0; i < len(bytes_stdout); i++ {
+		if bytes_stdout[i] == '{' {
+			fmt.Println("Warning:\n\t", string(bytes_stdout[:i]))
+			bytes_stdout = bytes_stdout[i:]
+			break
+		}
+	}
+
+	err = json.Unmarshal(bytes_stdout, &fioOut)
 	if err != nil {
 		return fioOut, errors.Wrapf(err, "Unable to parse fio output into json.")
 	}

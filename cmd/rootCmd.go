@@ -45,21 +45,21 @@ var (
 	}
 
 	storageClass   string
+	volumeMode     string
 	namespace      string
 	containerImage string
 
-	fioCheckerSize         string
-	fioCheckerPrepFilePath string
-	fioCheckerFilePath     string
-	fioCheckerTestName     string
-	fioCmd                 = &cobra.Command{
+	fioCheckerSize     string
+	fioCheckerFilePath string
+	fioCheckerTestName string
+	fioCmd             = &cobra.Command{
 		Use:   "fio",
 		Short: "Runs an fio test",
 		Long:  `Run an fio test`,
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 			defer cancel()
-			Fio(ctx, output, storageClass, fioCheckerSize, namespace, fioCheckerTestName, fioCheckerFilePath, containerImage)
+			Fio(ctx, output, storageClass, volumeMode, fioCheckerSize, namespace, fioCheckerTestName, fioCheckerFilePath, containerImage)
 		},
 	}
 
@@ -86,9 +86,9 @@ func init() {
 	rootCmd.AddCommand(fioCmd)
 	fioCmd.Flags().StringVarP(&storageClass, "storageclass", "s", "", "The name of a Storageclass. (Required)")
 	_ = fioCmd.MarkFlagRequired("storageclass")
+	fioCmd.Flags().StringVarP(&volumeMode, "volumemode", "m", "", "Volume Mode for PVC (Block/Filesystem). Defaults to Filesystem if not provided")
 	fioCmd.Flags().StringVarP(&fioCheckerSize, "size", "z", fio.DefaultPVCSize, "The size of the volume used to run FIO.")
 	fioCmd.Flags().StringVarP(&namespace, "namespace", "n", fio.DefaultNS, "The namespace used to run FIO.")
-	fioCmd.Flags().StringVarP(&fioCheckerPrepFilePath, "fioprepfile", "f", "", "The path to a an fio config file to be used to prep the PVså (typically used for read tests).")
 	fioCmd.Flags().StringVarP(&fioCheckerFilePath, "fiofile", "f", "", "The path to a an fio config file.")
 	fioCmd.Flags().StringVarP(&fioCheckerTestName, "testname", "t", "", "The Name of a predefined kubestr fio test. Options(default-fio)")
 	fioCmd.Flags().StringVarP(&containerImage, "image", "i", "", "The container image used to create a pod.")
@@ -151,7 +151,7 @@ func Baseline(ctx context.Context, output string) {
 }
 
 // Fio executes the FIO test.
-func Fio(ctx context.Context, output, storageclass, size, namespace, jobName, fioFilePath string, containerImage string) {
+func Fio(ctx context.Context, output, storageclass, volumeMode, size, namespace, jobName, fioFilePath string, containerImage string) {
 	cli, err := kubestr.LoadKubeCli()
 	if err != nil {
 		fmt.Println(err.Error())
@@ -164,6 +164,7 @@ func Fio(ctx context.Context, output, storageclass, size, namespace, jobName, fi
 	var result *kubestr.TestOutput
 	if fioResult, err := fioRunner.RunFio(ctx, &fio.RunFIOArgs{
 		StorageClass:   storageclass,
+		VolumeMode:     volumeMode,
 		Size:           size,
 		Namespace:      namespace,
 		FIOJobName:     jobName,

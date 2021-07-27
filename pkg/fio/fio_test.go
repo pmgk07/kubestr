@@ -282,6 +282,7 @@ type fakeFioStepper struct {
 	lcmErr       error
 
 	cPVCExpSC   string
+	cVolumeMode string
 	cPVCExpSize string
 	cPVC        *v1.PersistentVolumeClaim
 	cPVCErr     error
@@ -312,9 +313,10 @@ func (f *fakeFioStepper) loadConfigMap(ctx context.Context, args *RunFIOArgs) (*
 	f.steps = append(f.steps, "LCM")
 	return f.lcmConfigMap, f.lcmErr
 }
-func (f *fakeFioStepper) createPVC(ctx context.Context, storageclass, size, namespace string) (*v1.PersistentVolumeClaim, error) {
+func (f *fakeFioStepper) createPVC(ctx context.Context, storageclass, volumeMode, size, namespace string) (*v1.PersistentVolumeClaim, error) {
 	f.steps = append(f.steps, "CPVC")
 	f.cPVCExpSC = storageclass
+	f.cVolumeMode = volumeMode
 	f.cPVCExpSize = size
 	return f.cPVC, f.cPVCErr
 }
@@ -322,7 +324,7 @@ func (f *fakeFioStepper) deletePVC(ctx context.Context, pvcName, namespace strin
 	f.steps = append(f.steps, "DPVC")
 	return f.dPVCErr
 }
-func (f *fakeFioStepper) createPod(ctx context.Context, pvcName, configMapName, testFileName, namespace string, image string) (*v1.Pod, error) {
+func (f *fakeFioStepper) createPod(ctx context.Context, pvcName, volumeMode, configMapName, testFileName, namespace string, image string) (*v1.Pod, error) {
 	f.steps = append(f.steps, "CPOD")
 	f.cPodExpCM = configMapName
 	f.cPodExpFN = testFileName
@@ -333,7 +335,7 @@ func (f *fakeFioStepper) deletePod(ctx context.Context, podName, namespace strin
 	f.steps = append(f.steps, "DPOD")
 	return f.dPodErr
 }
-func (f *fakeFioStepper) runFIOCommand(ctx context.Context, podName, containerName, testFileName, namespace string) (FioResult, error) {
+func (f *fakeFioStepper) runFIOCommand(ctx context.Context, volumeMode, podName, containerName, testFileName, namespace string) (FioResult, error) {
 	f.steps = append(f.steps, "RFIOC")
 	return f.rFIOout, f.rFIOErr
 }
@@ -464,11 +466,36 @@ func (s *FIOTestSuite) TestCreatePVC(c *C) {
 	for _, tc := range []struct {
 		cli          kubernetes.Interface
 		storageclass string
+		volumeMode   string
 		size         string
 		errChecker   Checker
 		pvcChecker   Checker
 		failCreates  bool
 	}{
+		{
+			cli:          fake.NewSimpleClientset(),
+			storageclass: "fakesc",
+			volumeMode:   "FileSystem",
+			size:         "20Gi",
+			errChecker:   IsNil,
+			pvcChecker:   NotNil,
+		},
+		{
+			cli:          fake.NewSimpleClientset(),
+			storageclass: "fakesc",
+			volumeMode:   "Block",
+			size:         "20Gi",
+			errChecker:   IsNil,
+			pvcChecker:   NotNil,
+		},
+		{
+			cli:          fake.NewSimpleClientset(),
+			storageclass: "fakesc",
+			volumeMode:   "",
+			size:         "20Gi",
+			errChecker:   IsNil,
+			pvcChecker:   NotNil,
+		},
 		{
 			cli:          fake.NewSimpleClientset(),
 			storageclass: "fakesc",
@@ -491,6 +518,14 @@ func (s *FIOTestSuite) TestCreatePVC(c *C) {
 			pvcChecker:   IsNil,
 			errChecker:   NotNil,
 		},
+		{ // parse error
+			cli:          fake.NewSimpleClientset(),
+			storageclass: "fakesc",
+			volumeMode:   "FakeFilesystem",
+			size:         "10Gi",
+			pvcChecker:   IsNil,
+			errChecker:   NotNil,
+		},
 	} {
 		stepper := &fioStepper{cli: tc.cli}
 		if tc.failCreates {
@@ -498,7 +533,7 @@ func (s *FIOTestSuite) TestCreatePVC(c *C) {
 				return true, nil, errors.New("Error creating object")
 			})
 		}
-		pvc, err := stepper.createPVC(ctx, tc.storageclass, tc.size, DefaultNS)
+		pvc, err := stepper.createPVC(ctx, tc.storageclass, tc.volumeMode, tc.size, DefaultNS)
 		c.Check(err, tc.errChecker)
 		c.Check(pvc, tc.pvcChecker)
 		if pvc != nil {
@@ -528,6 +563,7 @@ func (s *FIOTestSuite) TestCreatPod(c *C) {
 	ctx := context.Background()
 	for _, tc := range []struct {
 		pvcName       string
+		volumeMode    string
 		configMapName string
 		testFileName  string
 		image         string
@@ -543,6 +579,29 @@ func (s *FIOTestSuite) TestCreatPod(c *C) {
 		},
 		{
 			pvcName:       "pvc",
+			configMapName: "cm",
+			testFileName:  "testfile",
+			errChecker:    NotNil,
+			reactor: []k8stesting.Reactor{
+				&k8stesting.SimpleReactor{
+					Verb:     "create",
+					Resource: "*",
+					Reaction: func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+						return true, &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "pod"}}, nil
+					},
+				},
+				&k8stesting.SimpleReactor{
+					Verb:     "get",
+					Resource: "*",
+					Reaction: func(action k8stesting.Action) (handled bool, ret runtime.Object, err error) {
+						return true, nil, errors.New("Error getting object")
+					},
+				},
+			},
+		},
+		{
+			pvcName:       "pvc",
+			volumeMode:    "Block",
 			configMapName: "cm",
 			testFileName:  "testfile",
 			errChecker:    NotNil,
@@ -621,7 +680,7 @@ func (s *FIOTestSuite) TestCreatPod(c *C) {
 		if tc.reactor != nil {
 			stepper.cli.(*fake.Clientset).Fake.ReactionChain = tc.reactor
 		}
-		pod, err := stepper.createPod(ctx, tc.pvcName, tc.configMapName, tc.testFileName, DefaultNS, tc.image)
+		pod, err := stepper.createPod(ctx, tc.pvcName, tc.volumeMode, tc.configMapName, tc.testFileName, DefaultNS, tc.image)
 		c.Check(err, tc.errChecker)
 		if err == nil {
 			c.Assert(pod.GenerateName, Equals, PodGenerateName)
@@ -702,6 +761,7 @@ func (s *FIOTestSuite) TestRunFioCommand(c *C) {
 	for _, tc := range []struct {
 		executor      *fakeKubeExecutor
 		errChecker    Checker
+		volumeMode    string
 		podName       string
 		containerName string
 		testFileName  string
@@ -759,7 +819,7 @@ func (s *FIOTestSuite) TestRunFioCommand(c *C) {
 		stepper := &fioStepper{
 			kubeExecutor: tc.executor,
 		}
-		out, err := stepper.runFIOCommand(ctx, tc.podName, tc.containerName, tc.testFileName, DefaultNS)
+		out, err := stepper.runFIOCommand(ctx, tc.volumeMode, tc.podName, tc.containerName, tc.testFileName, DefaultNS)
 		c.Check(err, tc.errChecker)
 		c.Assert(out, DeepEquals, tc.out)
 		c.Assert(tc.executor.keInPodName, Equals, tc.podName)

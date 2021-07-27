@@ -28,12 +28,13 @@ func (f FioResult) Print() string {
 }
 
 type FioGlobalOptions struct {
-	Directory  string `json:"directory,omitempty"`
-	RandRepeat string `json:"randrepeat,omitempty"`
-	Verify     string `json:"verify,omitempty"`
-	IOEngine   string `json:"ioengine,omitempty"`
-	Direct     string `json:"direct,omitempty"`
-	GtodReduce string `json:"gtod_reduce,omitempty"`
+	Directory   string `json:"directory,omitempty"`
+	DeviceNames string `json:"device-names,omitempty"`
+	RandRepeat  string `json:"randrepeat,omitempty"`
+	Verify      string `json:"verify,omitempty"`
+	IOEngine    string `json:"ioengine,omitempty"`
+	Direct      string `json:"direct,omitempty"`
+	GtodReduce  string `json:"gtod_reduce,omitempty"`
 }
 
 func (g FioGlobalOptions) Print() string {

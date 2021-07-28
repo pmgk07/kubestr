@@ -264,6 +264,7 @@ func (s *fioStepper) createPod(ctx context.Context, pvcName, volumeMode, configM
 			},
 		},
 		Spec: v1.PodSpec{
+			// Stateful DaemonSet like kubestr deployment on multiple calls to fioStepper.CreatePod
 			Affinity: &v1.Affinity{
 				PodAntiAffinity: &v1.PodAntiAffinity{
 					RequiredDuringSchedulingIgnoredDuringExecution: []v1.PodAffinityTerm{{
@@ -275,20 +276,7 @@ func (s *fioStepper) createPod(ctx context.Context, pvcName, volumeMode, configM
 								Values:   []string{"kubestr"},
 							}},
 						},
-					}},
-					// PreferredDuringSchedulingIgnoredDuringExecution: []v1.WeightedPodAffinityTerm{{
-					// 	Weight: 100,
-					// 	PodAffinityTerm: v1.PodAffinityTerm{
-					// 		TopologyKey: "kubernetes.io/hostname",
-					// 		LabelSelector: &metav1.LabelSelector{
-					// 			MatchExpressions: []metav1.LabelSelectorRequirement{{
-					// 				Key:      "app",
-					// 				Operator: metav1.LabelSelectorOpIn,
-					// 				Values:   []string{"kubestr"},
-					// 			}},
-					// 		},
-					// 	},
-					// }},
+					}}
 				},
 			},
 			Containers: []v1.Container{{
